@@ -43,7 +43,9 @@ jobs:
           
           # Restart Airflow if needed
           if [ "$RESTART_NEEDED" = true ]; then
-            sudo systemctl restart airflow
+            cd ~/airflow
+            docker compose down
+            docker compose up -d
           fi
           
           echo "Deployment completed successfully"
