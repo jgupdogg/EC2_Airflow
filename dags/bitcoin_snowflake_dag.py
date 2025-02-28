@@ -1,5 +1,6 @@
 # dags/bitcoin_dag.py
 """
+TEST
 DAG to fetch Bitcoin data from FMP API and store in Snowflake.
 """
 from datetime import datetime, timedelta

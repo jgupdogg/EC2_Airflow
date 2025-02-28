@@ -1,4 +1,7 @@
-apache-airflow-providers-snowflake>=4.1.0
-apache-airflow-providers-http>=4.5.0
-pandas>=1.5.0
-requests>=2.27.0
+apache-airflow-providers-http 
+pandas                         
+requests
+pyarrow
+numpy
+python-dotenv
+apache-airflow-providers-snowflake
