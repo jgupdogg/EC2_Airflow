@@ -1,0 +1,57 @@
+name: Deploy to EC2 Airflow
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # Create directories if they don't exist
+          mkdir -p ~/airflow/dags
+          mkdir -p ~/airflow/plugins
+          mkdir -p ~/airflow/include
+          
+          # Clone or update repository
+          if [ ! -d "~/airflow-repo" ]; then
+            git clone https://github.com/jgupdogg/EC2_Airflow.git ~/airflow-repo
+          else
+            cd ~/airflow-repo
+            git fetch
+            git reset --hard origin/main
+          fi
+          
+          # Copy files to Airflow directory
+          rsync -av --delete ~/airflow-repo/dags/ ~/airflow/dags/
+          rsync -av --delete ~/airflow-repo/plugins/ ~/airflow/plugins/
+          
+          # Copy configuration files if they exist
+          if [ -f ~/airflow-repo/requirements.txt ]; then
+            cp ~/airflow-repo/requirements.txt ~/airflow/requirements.txt
+            RESTART_NEEDED=true
+          fi
+          
+          if [ -f ~/airflow-repo/docker-compose.yaml ]; then
+            cp ~/airflow-repo/docker-compose.yaml ~/airflow/docker-compose.yaml
+            RESTART_NEEDED=true
+          fi
+          
+          # Restart Airflow if needed
+          if [ "$RESTART_NEEDED" = true ]; then
+            sudo systemctl restart airflow
+          fi
+          
+          echo "Deployment completed successfully"
