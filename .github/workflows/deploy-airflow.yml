@@ -11,18 +11,21 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Determine Network Information
+    - name: Network Diagnostics
       run: |
-        # Get GitHub Actions runner IP
+        # GitHub Actions Runner IP
         RUNNER_IP=$(curl -s https://api.ipify.org)
         echo "GitHub Actions Runner IP: $RUNNER_IP"
         
-        # Perform network diagnostics
-        echo "Traceroute to EC2 Host"
-        traceroute ${{ secrets.EC2_HOST }}
-        
-        echo "Ping Test"
+        # Install network tools
+        sudo apt-get update
+        sudo apt-get install -y iputils-ping mtr
+
+        # Ping Test
         ping -c 4 ${{ secrets.EC2_HOST }}
+        
+        # Trace route alternative
+        mtr -r -c 4 ${{ secrets.EC2_HOST }}
 
     - name: Verify SSH Connectivity
       env:
