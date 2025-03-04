@@ -39,20 +39,32 @@ jobs:
         strip_components: 0
         timeout: 15m
         command_timeout: 15m
-        
+
     - name: Execute commands on EC2
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ec2-user
         key: ${{ secrets.EC2_SSH_KEY }}
+        timeout: 30m  # Increased to 30 minutes
+        command_timeout: 30m
         script: |
+          # Verbose logging and error handling
+          set -x  # Enable debug mode
+          
+          echo "Starting Airflow deployment at $(date)"
+          
+          # Ensure airflow directory exists
+          mkdir -p ~/airflow
+          
           # Check if configuration files were updated
           RESTART_NEEDED=false
           if [ -f ~/airflow/requirements.txt.original ] && ! cmp -s ~/airflow/requirements.txt ~/airflow/requirements.txt.original; then
+            echo "requirements.txt changed. Restart needed."
             RESTART_NEEDED=true
           fi
           if [ -f ~/airflow/docker-compose.yaml.original ] && ! cmp -s ~/airflow/docker-compose.yaml ~/airflow/docker-compose.yaml.original; then
+            echo "docker-compose.yaml changed. Restart needed."
             RESTART_NEEDED=true
           fi
           
@@ -62,9 +74,27 @@ jobs:
           
           # Restart Airflow if needed
           if [ "$RESTART_NEEDED" = true ]; then
+            echo "Restarting Airflow services..."
             cd ~/airflow
-            docker compose down
+            
+            # Pull latest images first
+            echo "Pulling latest Docker images..."
+            docker compose pull
+            
+            # Stop existing containers
+            echo "Stopping existing containers..."
+            docker compose down --timeout 300  # 5-minute timeout for graceful shutdown
+            
+            # Start new containers
+            echo "Starting new containers..."
             docker compose up -d
+            
+            # Wait and check container status
+            sleep 30
+            docker compose ps
+            docker compose logs --tail=50
+          else
+            echo "No configuration changes detected. Skipping restart."
           fi
           
-          echo "Deployment completed successfully"
+          echo "Deployment completed successfully at $(date)"
