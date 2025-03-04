@@ -13,32 +13,20 @@ jobs:
 
     - name: Prepare SSH Key
       run: |
-        # Create .ssh directory
         mkdir -p ~/.ssh
-        
-        # Write SSH key to file
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-        
-        # Set correct permissions
         chmod 600 ~/.ssh/id_rsa
-        
-        # Verify key exists and has correct permissions
-        ls -l ~/.ssh/id_rsa
 
-    - name: Network Diagnostics and SSH Test
+    - name: Network Diagnostics
       run: |
-        # GitHub Actions Runner IP
-        RUNNER_IP=$(curl -s https://api.ipify.org)
-        echo "GitHub Actions Runner IP: $RUNNER_IP"
+        echo "GitHub Actions Runner IP: $(curl -s https://api.ipify.org)"
         
-        # Attempt SSH connection with verbose output
+        # Test network connectivity
         ssh -vvv \
           -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
           -i ~/.ssh/id_rsa \
           ec2-user@52.205.187.101 \
-          'hostname && uptime'
-
+          'dd if=/dev/zero of=/dev/null bs=1M count=100'
 
     - name: Deploy to EC2
       uses: appleboy/scp-action@master
