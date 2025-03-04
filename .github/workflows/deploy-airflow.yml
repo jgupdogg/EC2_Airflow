@@ -20,6 +20,13 @@ jobs:
         source: "dags/,plugins/,requirements.txt,docker-compose.yaml"
         target: "/home/ec2-user/airflow"
         strip_components: 0
+        timeout: 5m  # Increased timeout
+
+
+    - name: Verify SSH Connectivity
+      run: |
+        # Test SSH connection with verbose output
+        ssh -vvv -i <(echo "${{ secrets.EC2_SSH_KEY }}") ec2-user@${{ secrets.EC2_HOST }} exit
 
     - name: Execute commands on EC2
       uses: appleboy/ssh-action@master
