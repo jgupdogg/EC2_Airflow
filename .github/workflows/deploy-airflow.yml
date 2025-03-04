@@ -40,61 +40,46 @@ jobs:
         timeout: 15m
         command_timeout: 15m
 
-    - name: Execute commands on EC2
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ec2-user
-        key: ${{ secrets.EC2_SSH_KEY }}
-        timeout: 30m  # Increased to 30 minutes
-        command_timeout: 30m
-        script: |
-          # Verbose logging and error handling
-          set -x  # Enable debug mode
-          
-          echo "Starting Airflow deployment at $(date)"
-          
-          # Ensure airflow directory exists
-          mkdir -p ~/airflow
+    - name: Restart Airflow on EC2
+      run: |
+        # Prepare SSH key
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+    
+        # Verbose SSH command with extended timeout
+        ssh -vvv \
+          -o StrictHostKeyChecking=no \
+          -o ServerAliveInterval=60 \
+          -o ServerAliveCountMax=10 \
+          -i ~/.ssh/id_rsa \
+          ec2-user@${{ secrets.EC2_HOST }} \
+          '
+          set -x
+          cd ~/airflow
           
           # Check if configuration files were updated
           RESTART_NEEDED=false
-          if [ -f ~/airflow/requirements.txt.original ] && ! cmp -s ~/airflow/requirements.txt ~/airflow/requirements.txt.original; then
-            echo "requirements.txt changed. Restart needed."
+          if [ -f requirements.txt.original ] && ! cmp -s requirements.txt requirements.txt.original; then
             RESTART_NEEDED=true
           fi
-          if [ -f ~/airflow/docker-compose.yaml.original ] && ! cmp -s ~/airflow/docker-compose.yaml ~/airflow/docker-compose.yaml.original; then
-            echo "docker-compose.yaml changed. Restart needed."
+          if [ -f docker-compose.yaml.original ] && ! cmp -s docker-compose.yaml docker-compose.yaml.original; then
             RESTART_NEEDED=true
           fi
           
           # Save current versions as original
-          cp ~/airflow/requirements.txt ~/airflow/requirements.txt.original
-          cp ~/airflow/docker-compose.yaml ~/airflow/docker-compose.yaml.original
+          cp requirements.txt requirements.txt.original
+          cp docker-compose.yaml docker-compose.yaml.original
           
           # Restart Airflow if needed
           if [ "$RESTART_NEEDED" = true ]; then
             echo "Restarting Airflow services..."
-            cd ~/airflow
-            
-            # Pull latest images first
-            echo "Pulling latest Docker images..."
             docker compose pull
-            
-            # Stop existing containers
-            echo "Stopping existing containers..."
-            docker compose down --timeout 300  # 5-minute timeout for graceful shutdown
-            
-            # Start new containers
-            echo "Starting new containers..."
+            docker compose down
             docker compose up -d
-            
-            # Wait and check container status
-            sleep 30
-            docker compose ps
-            docker compose logs --tail=50
           else
             echo "No configuration changes detected. Skipping restart."
           fi
           
-          echo "Deployment completed successfully at $(date)"
+          echo "Deployment completed successfully"
+          '
