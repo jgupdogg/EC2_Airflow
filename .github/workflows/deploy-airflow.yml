@@ -11,18 +11,34 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Network Diagnostics
+    - name: Prepare SSH Key
       run: |
-        echo "GitHub Actions Runner IP: $RUNNER_IP"
-        RUNNER_IP=$(curl -s https://api.ipify.org)
+        # Create .ssh directory
+        mkdir -p ~/.ssh
         
-        echo "Attempting to connect to EC2 instance"
+        # Write SSH key to file
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+        
+        # Set correct permissions
+        chmod 600 ~/.ssh/id_rsa
+        
+        # Verify key exists and has correct permissions
+        ls -l ~/.ssh/id_rsa
+
+    - name: Network Diagnostics and SSH Test
+      run: |
+        # GitHub Actions Runner IP
+        RUNNER_IP=$(curl -s https://api.ipify.org)
+        echo "GitHub Actions Runner IP: $RUNNER_IP"
+        
+        # Attempt SSH connection with verbose output
         ssh -vvv \
           -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
-          -i <(echo "${{ secrets.EC2_SSH_KEY }}") \
+          -i ~/.ssh/id_rsa \
           ec2-user@52.205.187.101 \
           'hostname && uptime'
+
 
     - name: Deploy to EC2
       uses: appleboy/scp-action@master
