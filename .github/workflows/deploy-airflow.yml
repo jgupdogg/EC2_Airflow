@@ -21,24 +21,25 @@ jobs:
       run: |
         echo "GitHub Actions Runner IP: $(curl -s https://api.ipify.org)"
         
-        # Test network connectivity
+        # Verbose network test
         ssh -vvv \
           -o StrictHostKeyChecking=no \
           -i ~/.ssh/id_rsa \
           ec2-user@52.205.187.101 \
-          'dd if=/dev/zero of=/dev/null bs=1M count=100'
+          'df -h && free -h && uptime'
 
     - name: Deploy to EC2
       uses: appleboy/scp-action@master
       with:
-        host: ${{ secrets.EC2_HOST }}
+        host: 52.205.187.101
         username: ec2-user
         key: ${{ secrets.EC2_SSH_KEY }}
         source: "dags/,plugins/,requirements.txt,docker-compose.yaml"
         target: "/home/ec2-user/airflow"
         strip_components: 0
-        timeout: 5m  # Increased timeout
-
+        timeout: 15m
+        command_timeout: 15m
+        
     - name: Execute commands on EC2
       uses: appleboy/ssh-action@master
       with:
