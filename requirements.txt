@@ -5,3 +5,4 @@ pyarrow
 numpy
 python-dotenv
 apache-airflow-providers-snowflake
+apache-airflow-providers-slack
