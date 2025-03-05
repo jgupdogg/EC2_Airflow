@@ -6,3 +6,6 @@ numpy
 python-dotenv
 apache-airflow-providers-snowflake
 apache-airflow-providers-slack
+sqlalchemy 
+psycopg2-binary 
+snowflake-connector-python
