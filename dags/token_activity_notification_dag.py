@@ -406,14 +406,48 @@ def token_activity_notification_dag():
                     
                     # Format message for notification
                     interval_text = interval_mapping.get(notification['time_interval'], '1 hour')
-                    
+
                     # Create token info
-                    token_info = f"{notification['NAME']} ({notification['SYMBOL']})"
-                    token_link = f"https://solscan.io/token/{notification['token']}"
-                    
-                    message = (f"🐳 *Whale Alert*: <{token_link}|{token_info}> saw "
-                              f"{notification['num_users_bought']} buys and "
-                              f"{notification['num_users_sold']} sells in the last {interval_text}.")
+                    token_name = notification['NAME']
+                    token_symbol = notification['SYMBOL']
+                    token_address = notification['token']
+                    buys = int(notification['num_users_bought'])
+                    sells = int(notification['num_users_sold'])
+
+                    # Create links
+                    dexscreener_link = f"https://dexscreener.com/solana/{token_address}"
+
+                    # Determine market sentiment and choose appropriate indicators
+                    if buys > sells:
+                        # Bullish sentiment (more buys than sells)
+                        sentiment_indicator = "🟢"  # Green circle
+                        sentiment_arrow = "↗️"      # Up-right arrow
+                        sentiment_text = f"*BULLISH ACTIVITY*"
+                        sentiment_ratio = f"{buys}/{sells} buy/sell ratio"
+                    elif sells > buys:
+                        # Bearish sentiment (more sells than buys)
+                        sentiment_indicator = "🔴"  # Red circle
+                        sentiment_arrow = "↘️"      # Down-right arrow
+                        sentiment_text = f"*BEARISH ACTIVITY*"
+                        sentiment_ratio = f"{sells}/{buys} sell/buy ratio"
+                    else:
+                        # Neutral sentiment (equal buys and sells)
+                        sentiment_indicator = "⚪"  # White circle
+                        sentiment_arrow = "↔️"      # Horizontal arrow
+                        sentiment_text = f"*NEUTRAL ACTIVITY*"
+                        sentiment_ratio = f"{buys}/{sells} buy/sell ratio"
+
+                    # Format token name and stats
+                    # Using Slack's block format for better visual organization
+                    message = f"""
+{sentiment_indicator} *WHALE ALERT* {sentiment_indicator}
+{sentiment_arrow} {sentiment_text}: <{dexscreener_link}|{token_name} ({token_symbol})>
+• *Time Frame*: Last {interval_text}
+• *Unique Buyers*: {buys} users
+• *Unique Sellers*: {sells} users
+• *Activity Ratio*: {sentiment_ratio}
+• *Token Address*: `{token_address}`
+"""
                     
                     new_notifications.append(message)
                 except Exception as e:
