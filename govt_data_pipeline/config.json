@@ -1,0 +1,50 @@
+{
+    "sources": [
+      {
+        "name": "USA.gov",
+        "url": "https://www.usa.gov",
+        "pages": [
+          {
+            "name": "Benefits",
+            "url_pattern": "/benefits",
+            "max_pages": 2,
+            "max_documents": 5,
+            "extraction": {
+              "type": "css",
+              "document_links": "a.usa-link",
+              "content": "main",
+              "pagination": ".pagination a.next"
+            }
+          },
+          {
+            "name": "Government Agencies",
+            "url_pattern": "/agencies",
+            "max_pages": 1,
+            "max_documents": 10,
+            "extraction": {
+              "type": "css",
+              "document_links": ".usa-card__container a",
+              "content": "main"
+            }
+          }
+        ]
+      },
+      {
+        "name": "IRS.gov",
+        "url": "https://www.irs.gov",
+        "pages": [
+          {
+            "name": "Tax Forms",
+            "url_pattern": "/forms-instructions",
+            "max_pages": 1,
+            "max_documents": 5,
+            "extraction": {
+              "type": "css",
+              "document_links": "article a",
+              "content": "article"
+            }
+          }
+        ]
+      }
+    ]
+  }
