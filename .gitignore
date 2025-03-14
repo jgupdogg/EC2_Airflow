@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Testing
+govt_data_pipeline/
+
 # Airflow logs
 logs/
 *.log

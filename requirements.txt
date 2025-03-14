@@ -4,8 +4,34 @@ requests
 pyarrow
 numpy
 python-dotenv
-apache-airflow-providers-snowflake
 apache-airflow-providers-slack
 sqlalchemy 
 psycopg2-binary 
-snowflake-connector-python
+
+
+# Core dependencies
+selenium>=4.10.0
+seleniumbase
+selenium-stealth>=1.0.6
+beautifulsoup4>=4.12.0
+pyvirtualdisplay>=3.0
+lxml
+supabase
+anthropic
+openai
+pinecone-client
+
+langchain
+langchain-anthropic
+langchain-openai
+langchain-pinecone
+
+# Utilities
+tqdm
+python-dateutil
+tenacity
+neo4j
+pyvirtualdisplay
+selenium
+seleniumbase
+supabase

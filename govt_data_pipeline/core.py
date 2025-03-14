@@ -2,19 +2,24 @@
 Core classes for the government data pipeline.
 
 This module defines the object-oriented architecture for scraping,
-processing, and storing government website data.
+processing, and storing government website data with Supabase integration.
 """
 
 import json
 import logging
 import os
 import hashlib
+import traceback
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union, Type
 from abc import ABC, abstractmethod
 import requests
 from bs4 import BeautifulSoup
 from langchain.schema import Document as LCDocument
+from supabase import create_client, Client
+from web_scraper.airflow_web_scraper import AirflowWebScraper
+from selenium.webdriver.common.by import By
+from contextlib import contextmanager
 
 # Configure logging
 logging.basicConfig(
@@ -24,8 +29,196 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+
+class ScraperAdapter:
+    """
+    Adapter class that manages AirflowWebScraper and provides an interface
+    compatible with the existing government data pipeline.
+    """
+    
+    _instance = None  # Singleton instance
+    
+    @classmethod
+    def get_instance(cls, **kwargs):
+        """
+        Get or create a singleton instance of the ScraperAdapter.
+        This helps prevent creating multiple browser instances.
+        
+        Args:
+            **kwargs: Arguments to pass to AirflowWebScraper constructor if creating new instance
+            
+        Returns:
+            ScraperAdapter: The singleton instance
+        """
+        if cls._instance is None:
+            cls._instance = cls(**kwargs)
+        return cls._instance
+    
+    def __init__(self, headless=False, use_virtual_display=True):
+        """
+        Initialize the adapter with an AirflowWebScraper instance.
+        
+        Args:
+            headless: Run browser in headless mode
+            use_virtual_display: Use virtual display for X server
+        """
+        self.scraper = None
+        self.headless = headless
+        self.use_virtual_display = use_virtual_display
+        self._init_count = 0
+        
+    def _initialize(self):
+        """Initialize the AirflowWebScraper if not already initialized."""
+        if self.scraper is None:
+            logger.info("Initializing AirflowWebScraper")
+            self.scraper = AirflowWebScraper(
+                headless=self.headless,
+                use_virtual_display=self.use_virtual_display,
+                page_load_timeout=30
+            )
+        self._init_count += 1
+        
+    def _cleanup(self, force=False):
+        """
+        Clean up resources if no more users.
+        
+        Args:
+            force: Force cleanup regardless of reference count
+        """
+        self._init_count -= 1
+        if force or self._init_count <= 0:
+            if self.scraper:
+                logger.info("Cleaning up AirflowWebScraper")
+                self.scraper.quit()
+                self.scraper = None
+                self._init_count = 0
+    
+    @contextmanager
+    def managed_scraper(self):
+        """
+        Context manager for automatically managing the lifecycle of the scraper.
+        
+        Usage:
+            with adapter.managed_scraper() as scraper:
+                scraper.navigate(url)
+        """
+        self._initialize()
+        try:
+            yield self.scraper
+        finally:
+            self._cleanup()
+    
+    def fetch_page(self, url, wait_time=None):
+        """
+        Fetch a page using AirflowWebScraper.
+        
+        Args:
+            url: URL to fetch
+            wait_time: Optional wait time after page load
+            
+        Returns:
+            str: HTML content of the page, or empty string if failed
+        """
+        with self.managed_scraper() as scraper:
+            success = scraper.navigate(url, wait_time=wait_time)
+            if success:
+                return scraper.get_page_source()
+            return ""
+    
+    def fetch_content_with_extractor(self, url, extractor_type, selector, timeout=10):
+        """
+        Fetch content from a page using a specific extractor type.
+        
+        Args:
+            url: URL to fetch
+            extractor_type: 'css' or 'xpath'
+            selector: CSS selector or XPath expression
+            timeout: Timeout for finding elements
+            
+        Returns:
+            str: Extracted content, or empty string if failed
+        """
+        with self.managed_scraper() as scraper:
+            success = scraper.navigate(url)
+            if not success:
+                return ""
+            
+            if extractor_type.lower() == 'xpath':
+                # Convert to By.XPATH for Selenium
+                locator = (By.XPATH, selector)
+            else:
+                # Default to CSS selector
+                locator = (By.CSS_SELECTOR, selector)
+            
+            elements = scraper.find_elements(locator, timeout=timeout)
+            if not elements:
+                # Fall back to page source
+                logger.warning(f"No elements found with {extractor_type}: {selector}. Returning full page.")
+                return scraper.get_page_source()
+            
+            # Extract text from all matching elements
+            content = ' '.join([elem.text for elem in elements if elem.text.strip()])
+            return content
+    
+    def extract_document_links(self, url, extractor_type, selector, timeout=10):
+        """
+        Extract document links from a page.
+        
+        Args:
+            url: URL to fetch
+            extractor_type: 'css' or 'xpath'
+            selector: CSS selector or XPath expression
+            timeout: Timeout for finding elements
+            
+        Returns:
+            List[Dict]: List of document links (url and title)
+        """
+        links = []
+        
+        with self.managed_scraper() as scraper:
+            success = scraper.navigate(url)
+            if not success:
+                return links
+            
+            if extractor_type.lower() == 'xpath':
+                # Convert to By.XPATH for Selenium
+                locator = (By.XPATH, selector)
+            else:
+                # Default to CSS selector
+                locator = (By.CSS_SELECTOR, selector)
+            
+            elements = scraper.find_elements(locator, timeout=timeout)
+            
+            for elem in elements:
+                try:
+                    href = elem.get_attribute('href')
+                    if href:
+                        title = elem.text.strip() or elem.get_attribute('title') or "Untitled"
+                        links.append({
+                            'url': href,
+                            'title': title
+                        })
+                except Exception as e:
+                    logger.error(f"Error extracting link: {e}")
+                    continue
+            
+        return links
+    
+    def close(self):
+        """Force close the scraper."""
+        self._cleanup(force=True)
+        
+    def __del__(self):
+        """Ensure scraper is closed when adapter is garbage collected."""
+        self.close()
+        
+
 class ContentExtractor(ABC):
     """Base class for extracting content from web pages."""
+    
+    def __init__(self):
+        """Initialize with a default scraper adapter."""
+        self.scraper_adapter = ScraperAdapter.get_instance()
     
     @abstractmethod
     def extract_document_links(self, html: str, url: str) -> List[Dict[str, str]]:
@@ -54,6 +247,18 @@ class ContentExtractor(ABC):
             Extracted text content
         """
         pass
+    
+    def extract_links_with_selenium(self, url: str) -> List[Dict[str, str]]:
+        """
+        Extract document links directly using Selenium.
+        
+        Args:
+            url: URL to scrape
+            
+        Returns:
+            List of dictionaries with 'url' and 'title' keys
+        """
+        pass
 
 
 class XPathExtractor(ContentExtractor):
@@ -67,11 +272,13 @@ class XPathExtractor(ContentExtractor):
             document_links_xpath: XPath for finding document links
             content_xpath: Optional XPath for extracting main content
         """
+        super().__init__()
         self.document_links_xpath = document_links_xpath
         self.content_xpath = content_xpath
     
     def extract_document_links(self, html: str, url: str) -> List[Dict[str, str]]:
         """Extract document links using XPath."""
+        # Use the legacy method for compatibility
         from lxml import html as lxml_html
         
         tree = lxml_html.fromstring(html)
@@ -113,6 +320,28 @@ class XPathExtractor(ContentExtractor):
         # Last resort, get body text
         body = soup.find('body')
         return body.get_text(' ', strip=True) if body else ''
+    
+    def extract_links_with_selenium(self, url: str) -> List[Dict[str, str]]:
+        """Extract document links directly using Selenium."""
+        return self.scraper_adapter.extract_document_links(
+            url=url,
+            extractor_type='xpath',
+            selector=self.document_links_xpath
+        )
+    
+    def extract_content_with_selenium(self, url: str) -> str:
+        """Extract content directly using Selenium."""
+        if self.content_xpath:
+            return self.scraper_adapter.fetch_content_with_extractor(
+                url=url,
+                extractor_type='xpath',
+                selector=self.content_xpath
+            )
+        
+        # If no content XPath is specified, fetch the page and use the regular extraction
+        html = self.scraper_adapter.fetch_page(url)
+        return self.extract_content(html, url)
+
 
 
 class CSSExtractor(ContentExtractor):
@@ -126,6 +355,7 @@ class CSSExtractor(ContentExtractor):
             document_links_css: CSS selector for finding document links
             content_css: Optional CSS selector for extracting main content
         """
+        super().__init__()
         self.document_links_css = document_links_css
         self.content_css = content_css
     
@@ -167,12 +397,35 @@ class CSSExtractor(ContentExtractor):
         # Last resort, get body text
         body = soup.find('body')
         return body.get_text(' ', strip=True) if body else ''
-
+    
+    def extract_links_with_selenium(self, url: str) -> List[Dict[str, str]]:
+        """Extract document links directly using Selenium."""
+        return self.scraper_adapter.extract_document_links(
+            url=url,
+            extractor_type='css',
+            selector=self.document_links_css
+        )
+    
+    def extract_content_with_selenium(self, url: str) -> str:
+        """Extract content directly using Selenium."""
+        if self.content_css:
+            return self.scraper_adapter.fetch_content_with_extractor(
+                url=url,
+                extractor_type='css',
+                selector=self.content_css
+            )
+        
+        # If no content CSS is specified, fetch the page and use the regular extraction
+        html = self.scraper_adapter.fetch_page(url)
+        return self.extract_content(html, url)
+    
 
 class SubSource:
     """
     Represents a specific section or page within a government website.
     Contains rules for finding and extracting documents.
+    
+    Updated to use AirflowWebScraper for handling JavaScript-heavy sites.
     """
     
     def __init__(self, subsource_config: Dict[str, Any], parent_source=None):
@@ -190,7 +443,7 @@ class SubSource:
         # Initialize the appropriate extractor
         extraction_config = subsource_config.get('extraction', {})
         extractor_type = extraction_config.get('type', 'css')
-        
+                
         if extractor_type.lower() == 'xpath':
             self.extractor = XPathExtractor(
                 document_links_xpath=extraction_config.get('document_links', '//a'),
@@ -206,6 +459,12 @@ class SubSource:
         self.pagination = extraction_config.get('pagination', None)
         self.max_pages = subsource_config.get('max_pages', 1)
         self.max_documents = subsource_config.get('max_documents', 100)
+        
+        # Use JavaScript rendering flag
+        self.use_javascript = subsource_config.get('use_javascript', False)
+        
+        # Initialize scraper adapter
+        self.scraper_adapter = ScraperAdapter.get_instance()
     
     def get_full_url(self) -> str:
         """Get the full URL for this subsource."""
@@ -231,13 +490,21 @@ class SubSource:
         elif page_num > 1:
             url += f"?page={page_num}"
         
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response.text
-        except requests.RequestException as e:
-            logger.error(f"Error fetching page {url}: {e}")
-            return ""
+        # If site requires JavaScript, use AirflowWebScraper
+        if self.use_javascript:
+            logger.info(f"Using AirflowWebScraper to fetch {url} (page {page_num})")
+            html = self.scraper_adapter.fetch_page(url)
+            return html
+        else:
+            # Use traditional requests for non-JavaScript sites
+            try:
+                logger.info(f"Using requests to fetch {url} (page {page_num})")
+                response = requests.get(url)
+                response.raise_for_status()
+                return response.text
+            except requests.RequestException as e:
+                logger.error(f"Error fetching page {url}: {e}")
+                return ""
     
     def get_document_links(self) -> List[Dict[str, str]]:
         """
@@ -249,22 +516,57 @@ class SubSource:
         all_links = []
         page_num = 1
         
-        while page_num <= self.max_pages:
-            html = self.fetch_page(page_num)
-            if not html:
-                break
-            
-            links = self.extractor.extract_document_links(html, self.get_full_url())
-            all_links.extend(links)
-            
-            if not self.pagination or len(links) == 0:
-                break
-            
-            page_num += 1
+        # If using JavaScript rendering, use Selenium directly
+        if self.use_javascript:
+            while page_num <= self.max_pages:
+                url = self.get_full_url()
+                
+                # Apply pagination if needed
+                if page_num > 1 and '?' in url:
+                    url += f"&page={page_num}"
+                elif page_num > 1:
+                    url += f"?page={page_num}"
+                
+                # Use Selenium-based extraction
+                links = self.extractor.extract_links_with_selenium(url)
+                
+                all_links.extend(links)
+                
+                if not self.pagination or len(links) == 0:
+                    break
+                
+                page_num += 1
+        else:
+            # Use traditional HTML parsing
+            while page_num <= self.max_pages:
+                html = self.fetch_page(page_num)
+                if not html:
+                    break
+                
+                links = self.extractor.extract_document_links(html, self.get_full_url())
+                all_links.extend(links)
+                
+                if not self.pagination or len(links) == 0:
+                    break
+                
+                page_num += 1
         
-        # Limit the number of documents
-        return all_links[:self.max_documents]
-
+        # Limit the number of documents and transform URLs
+        limited_links = all_links[:self.max_documents]
+        
+        # Transform URLs - replace .toc.htm with .htm in URLs
+        transformed_links = []
+        for link in limited_links:
+            url = link['url']
+            # Check if URL contains .toc.htm
+            if '.toc.htm' in url:
+                # Replace .toc.htm with .htm
+                url = url.replace('.toc.htm', '.htm')
+                link['url'] = url
+            transformed_links.append(link)
+        
+        # Return transformed links
+        return transformed_links
 
 class ScrapeSource:
     """
@@ -289,10 +591,13 @@ class ScrapeSource:
 
 
 
+
 class Document:
     """
     Represents a document scraped from a government website.
     Tracks state and processing.
+    
+    Updated to use AirflowWebScraper for JavaScript-heavy sites.
     """
     
     def __init__(self, url: str, title: str, source_name: str, subsource_name: str):
@@ -318,42 +623,72 @@ class Document:
         self.process_time = None
         self.last_checked = None  # When we last verified this document
         self.doc_id = None  # Database ID
+        self.use_javascript = False  # Flag to indicate if the document needs JavaScript
     
-    def fetch_content(self, extractor) -> bool:
+    def fetch_content(self, extractor, use_javascript: Optional[bool] = True) -> bool:
         """
         Fetch and extract content for this document.
         
         Args:
             extractor: ContentExtractor to use
+            use_javascript: Override the document's use_javascript flag
             
         Returns:
             bool: True if successful
         """
+        # Determine whether to use JavaScript
+        js_enabled = use_javascript if use_javascript is not None else self.use_javascript
+        
         try:
-            logger.info(f"Fetching content from URL: {self.url}")
+            logger.info(f"Fetching content from URL: {self.url} (JavaScript: {js_enabled})")
             
-            # Set a timeout and user agent for better scraping
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            response = requests.get(self.url, headers=headers, timeout=10)
-            
-            # Check status code
-            if response.status_code != 200:
-                logger.error(f"HTTP error {response.status_code} when fetching {self.url}")
-                self.status = f"error_http_{response.status_code}"
-                return False
+            if js_enabled:
+                # Use Selenium-based extraction
+                logger.debug(f"Using Selenium to extract content from {self.url}")
                 
-            # Check content type
-            content_type = response.headers.get('Content-Type', '')
-            if 'text/html' not in content_type and 'application/xhtml+xml' not in content_type:
-                logger.error(f"Unsupported content type: {content_type} for {self.url}")
-                self.status = "error_content_type"
-                return False
-            
-            # Extract content
-            logger.debug(f"Extracting content using extractor type: {type(extractor).__name__}")
-            self.content = extractor.extract_content(response.text, self.url)
+                # Get a scraper adapter instance
+                scraper_adapter = ScraperAdapter.get_instance()
+                
+                # Try to use the direct Selenium extraction
+                if hasattr(extractor, 'extract_content_with_selenium'):
+                    self.content = extractor.extract_content_with_selenium(self.url)
+                else:
+                    # Fallback: get page and then extract
+                    html = scraper_adapter.fetch_page(self.url)
+                    
+                    if not html:
+                        logger.error(f"Failed to fetch page using Selenium: {self.url}")
+                        self.status = "error_page_fetch"
+                        return False
+                    
+                    # Extract content using the provided extractor
+                    self.content = extractor.extract_content(html, self.url)
+            else:
+                # Use traditional requests for non-JavaScript sites
+                import requests
+                
+                # Set a timeout and user agent for better scraping
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                response = requests.get(self.url, headers=headers, timeout=10)
+                
+                # Check status code
+                if response.status_code != 200:
+                    logger.error(f"HTTP error {response.status_code} when fetching {self.url}")
+                    self.status = f"error_http_{response.status_code}"
+                    return False
+                    
+                # Check content type
+                content_type = response.headers.get('Content-Type', '')
+                if 'text/html' not in content_type and 'application/xhtml+xml' not in content_type:
+                    logger.error(f"Unsupported content type: {content_type} for {self.url}")
+                    self.status = "error_content_type"
+                    return False
+                
+                # Extract content
+                logger.debug(f"Extracting content using extractor type: {type(extractor).__name__}")
+                self.content = extractor.extract_content(response.text, self.url)
             
             # Check if content was extracted
             if not self.content or len(self.content.strip()) == 0:
@@ -375,18 +710,6 @@ class Document:
             logger.info(f"Successfully fetched and extracted content from {self.url}")
             return True
         
-        except requests.Timeout:
-            logger.error(f"Timeout when fetching {self.url}")
-            self.status = "error_timeout"
-            return False
-        except requests.ConnectionError:
-            logger.error(f"Connection error when fetching {self.url}")
-            self.status = "error_connection"
-            return False
-        except requests.RequestException as e:
-            logger.error(f"Request error when fetching {self.url}: {str(e)}")
-            self.status = "error_request"
-            return False
         except Exception as e:
             logger.error(f"Unexpected error when fetching document {self.url}: {str(e)}", exc_info=True)
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -415,7 +738,7 @@ class Document:
     def from_dict(cls, data: dict) -> 'Document':
         """Create a Document from a dictionary."""
         doc = cls(
-            url=data["url"],
+            url=data.get("url", ""),
             title=data.get("title", "Untitled"),
             source_name=data.get("source_name", "Unknown Source"),
             subsource_name=data.get("subsource_name", "Unknown Subsource")
@@ -427,6 +750,7 @@ class Document:
         doc.summary = data.get("summary")
         doc.embedding_id = data.get("embedding_id")
         doc.status = data.get("status", "new")
+        doc.use_javascript = data.get("use_javascript", False)
         
         # Safely parse date fields, handling None values
         try:
@@ -466,9 +790,8 @@ class Document:
         """Detailed representation of Document."""
         return f"Document(id={self.doc_id}, url='{self.url}', title='{self.title}', status='{self.status}', " \
                f"scrape_time={self.scrape_time}, content_length={len(self.content) if self.content else 0})"
-
-
-
+               
+               
 class Processor:
     """
     Handles AI processing of documents:
@@ -586,18 +909,33 @@ class Processor:
         
         self._init_llm()
         
-        prompt = f"""Please provide a concise summary of the following government website content.
-Focus on the key information, main services offered, and important points for citizens.
-Keep your summary informative and factual, between 3-5 sentences.
+        prompt = f"""Generate a structured summary of the following government website content.
 
+Input:
 Title: {document.title}
 Source: {document.source_name} - {document.subsource_name}
 URL: {document.url}
 
 Content:
-{document.content[:8000]}  # Limit content length
+{document.content[:8000]}
 
-Summary:"""
+Output Format:
+1. TITLE: A clear, direct title that captures the main topic (no more than 10 words)
+2. FACTS: 3-5 bullet points with the most important and relevant information 
+3. SENTIMENT: One bullet point expressing the overall sentiment (positive, negative, or neutral) of the content
+4. TAGS: 5-7 relevant keywords/tags separated by commas
+
+Example:
+TITLE: Federal Grant Program Launches for Rural Communities
+
+- $50 million in federal funding allocated to support infrastructure in rural communities
+- Applications will be accepted from April 1 to June 30, 2025
+- Eligible counties must have populations under 50,000 residents
+- Priority given to projects addressing water quality and broadband access
+- Overall sentiment is positive, with program expected to benefit approximately 200 rural counties nationwide
+
+TAGS: rural infrastructure, federal grants, funding opportunity, application deadline, eligibility requirements, water quality, broadband
+"""
 
         response = self._llm.invoke(prompt)
         summary = response.content.strip()
@@ -718,244 +1056,215 @@ Summary:"""
         except Exception as e:
             logger.error(f"Error searching similar documents: {e}", exc_info=True)
             return []
-        
-        
 
 
-class StorageManager:
+
+class SupabaseManager:
     """
-    Handles database operations for storing documents and tracking state.
+    Manages all database interactions using Supabase.
+    Handles document storage, retrieval, and status updates.
     """
     
-    def __init__(self, db_url: str = None):
+    def __init__(self, supabase_url: str = None, supabase_key: str = None):
         """
-        Initialize the storage manager.
+        Initialize the Supabase client.
         
         Args:
-            db_url: Database connection string
+            supabase_url: Supabase project URL
+            supabase_key: Supabase API key
         """
-        self.db_url = db_url or os.getenv("DATABASE_URL")
-        self.conn = None
-        self.cursor = None
-        self._schema_cache = {}  # Cache schema information to reduce DB queries
-    
-    def connect(self) -> bool:
-        """
-        Connect to the database.
+        self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
+        self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY")
+        self.supabase = None
         
-        Returns:
-            bool: True if successful
-        """
+        if not self.supabase_url or not self.supabase_key:
+            raise ValueError("Supabase URL and API key are required. Set SUPABASE_URL and SUPABASE_KEY environment variables.")
+        
         try:
-            import psycopg2
-            from psycopg2.extras import RealDictCursor
-            
-            # Log connection attempt without exposing credentials
-            if self.db_url:
-                parts = self.db_url.split('@')
-                if len(parts) > 1:
-                    prefix = parts[0].split(':')[0]
-                    suffix = parts[1]
-                    logger.info(f"Connecting to database with URL pattern: {prefix}:***@{suffix}")
-                else:
-                    # Handle case where URL doesn't contain '@'
-                    logger.info("Connecting to database (URL format not recognized)")
-            else:
-                logger.error("Database URL is None or empty")
-                return False
-            
-            # Convert SQLAlchemy connection string to psycopg2 format if needed
-            if self.db_url and self.db_url.startswith('postgresql+psycopg2://'):
-                db_url = self.db_url.replace('postgresql+psycopg2://', 'postgresql://')
-            else:
-                db_url = self.db_url
-            
-            logger.debug(f"Connecting with URL: {db_url[:10]}...{db_url[-10:] if len(db_url) > 20 else db_url}")
-            self.conn = psycopg2.connect(db_url)
-            
-            if self.conn is None:
-                logger.error("Connection object is None after psycopg2.connect call")
-                return False
-                
-            self.cursor = self.conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Test connection
-            self.cursor.execute("SELECT 1 as test")
-            result = self.cursor.fetchone()
-            
-            if result and result['test'] == 1:
-                logger.info("Successfully connected to database")
-                return True
-            else:
-                logger.error("Connection test failed: result does not contain expected 'test' value of 1")
-                return False
-        
+            self.supabase = create_client(self.supabase_url, self.supabase_key)
+            logger.info("Successfully initialized Supabase client")
         except Exception as e:
-            logger.error(f"Error connecting to database: {str(e)}", exc_info=True)
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            # More detailed error messages for common issues
-            error_msg = str(e).lower()
-            if "does not exist" in error_msg:
-                logger.error("Database does not exist. Please create it first.")
-            elif "password authentication failed" in error_msg:
-                logger.error("Database authentication failed. Check credentials.")
-            elif "could not connect to server" in error_msg:
-                logger.error("Could not connect to database server. Check if it's running.")
-            
-            return False
-    
-    def disconnect(self):
-        """Close database connection."""
-        if self.cursor:
-            self.cursor.close()
-            self.cursor = None
-        if self.conn:
-            self.conn.close()
-            self.conn = None
-            logger.info("Database connection closed")
+            logger.error(f"Error initializing Supabase client: {e}")
+            raise
     
     def setup_tables(self) -> bool:
         """
-        Create database tables if they don't exist.
+        Verify that the necessary tables exist in Supabase.
+        The tables should be created manually in the Supabase SQL editor.
         
         Returns:
-            bool: True if successful
+            bool: True if tables exist
         """
         try:
-            if not self.conn or self.conn.closed:
-                logger.info("Connection not established or closed, attempting to connect...")
-                if not self.connect():
-                    logger.error("Failed to connect to database in setup_tables")
-                    return False
+            # Verify the tables exist by querying them
+            logger.info("Verifying Supabase tables exist")
             
-            logger.info("Setting up database tables...")
+            try:
+                # Check if govt_documents table exists
+                self.supabase.table("govt_documents").select("id").limit(1).execute()
+                logger.info("govt_documents table exists")
+                
+                # Check if govt_sources table exists
+                self.supabase.table("govt_sources").select("id").limit(1).execute()
+                logger.info("govt_sources table exists")
+                
+                # Check if govt_subsources table exists
+                self.supabase.table("govt_subsources").select("id").limit(1).execute()
+                logger.info("govt_subsources table exists")
+                
+                return True
+            except Exception as e:
+                logger.error(f"Error verifying tables: {e}")
+                logger.info("Please run the table creation SQL in the Supabase SQL editor")
+                return False
             
-            # Log the SQL statements for debugging
-            create_sources_sql = """
-                CREATE TABLE IF NOT EXISTS govt_sources (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    base_url VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            logger.debug(f"Executing SQL: {create_sources_sql}")
-            self.cursor.execute(create_sources_sql)
-            logger.info("govt_sources table created or verified")
-            
-            create_subsources_sql = """
-                CREATE TABLE IF NOT EXISTS govt_subsources (
-                    id SERIAL PRIMARY KEY,
-                    source_id INTEGER REFERENCES govt_sources(id),
-                    name VARCHAR(255) NOT NULL,
-                    url_pattern VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            logger.debug(f"Executing SQL: {create_subsources_sql}")
-            self.cursor.execute(create_subsources_sql)
-            logger.info("govt_subsources table created or verified")
-            
-            create_documents_sql = """
-                CREATE TABLE IF NOT EXISTS govt_documents (
-                    id SERIAL PRIMARY KEY,
-                    url VARCHAR(255) NOT NULL UNIQUE,
-                    title VARCHAR(255),
-                    source_name VARCHAR(255),
-                    subsource_name VARCHAR(255),
-                    content TEXT,
-                    content_hash VARCHAR(32),
-                    summary TEXT,
-                    embedding_id VARCHAR(255),
-                    status VARCHAR(50) DEFAULT 'new',
-                    scrape_time TIMESTAMP,
-                    process_time TIMESTAMP,
-                    last_checked TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            logger.debug(f"Executing SQL: {create_documents_sql}")
-            self.cursor.execute(create_documents_sql)
-            logger.info("govt_documents table created or verified")
-            
-            create_index_sql = """
-                CREATE INDEX IF NOT EXISTS idx_govt_documents_content_hash
-                ON govt_documents(content_hash)
-            """
-            logger.debug(f"Executing SQL: {create_index_sql}")
-            self.cursor.execute(create_index_sql)
-            logger.info("index on content_hash created or verified")
-            
-            create_status_index_sql = """
-                CREATE INDEX IF NOT EXISTS idx_govt_documents_status
-                ON govt_documents(status)
-            """
-            logger.debug(f"Executing SQL: {create_status_index_sql}")
-            self.cursor.execute(create_status_index_sql)
-            logger.info("index on status created or verified")
-            
-            self.conn.commit()
-            logger.info("All tables created or verified successfully")
-            
-            # Cache schema information
-            self._cache_schema_info()
-            
-            return True
-        
         except Exception as e:
-            logger.error(f"Error setting up tables: {str(e)}", exc_info=True)
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            if self.conn:
-                self.conn.rollback()
+            logger.error(f"Error setting up Supabase tables: {e}")
             return False
     
-    def _cache_schema_info(self):
-        """Cache schema information to avoid repeated queries."""
-        try:
-            # Get column information for govt_documents table
-            self.cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'govt_documents'
-            """)
-            
-            columns = [row['column_name'] for row in self.cursor.fetchall()]
-            self._schema_cache['govt_documents_columns'] = set(columns)
-            
-            logger.debug(f"Cached schema info: {self._schema_cache}")
-        
-        except Exception as e:
-            logger.error(f"Error caching schema info: {str(e)}", exc_info=True)
-            # If we can't cache, just continue with empty cache
-            self._schema_cache = {}
-    
-    def _has_column(self, table: str, column: str) -> bool:
-        """Check if a column exists in a table."""
-        # Use cached schema if available
-        if f"{table}_columns" in self._schema_cache:
-            return column in self._schema_cache[f"{table}_columns"]
-        
-        # Otherwise query the database
-        try:
-            self.cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.columns 
-                    WHERE table_name = %s AND column_name = %s
-                )
-            """, (table, column))
-            
-            result = self.cursor.fetchone()
-            return result[0] if result else False
-        
-        except Exception as e:
-            logger.error(f"Error checking column existence: {str(e)}", exc_info=True)
-            return False
-    
-    def store_document(self, document) -> int:
+    def store_source(self, name: str, base_url: str) -> int:
         """
-        Store a document in the database.
+        Store a source in the database.
+        
+        Args:
+            name: Name of the source
+            base_url: Base URL of the source
+            
+        Returns:
+            int: Source ID if successful, 0 otherwise
+        """
+        try:
+            # Check if source exists
+            result = self.supabase.table("govt_sources").select("id").eq("name", name).execute()
+            
+            if result.data and len(result.data) > 0:
+                # Source exists, return ID
+                source_id = result.data[0]["id"]
+                logger.info(f"Source {name} already exists with ID {source_id}")
+                return source_id
+            
+            # Insert new source
+            now = datetime.now().isoformat()
+            result = self.supabase.table("govt_sources").insert({
+                "name": name,
+                "base_url": base_url,
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+            
+            if result.data and len(result.data) > 0:
+                source_id = result.data[0]["id"]
+                logger.info(f"Source {name} stored with ID {source_id}")
+                return source_id
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error storing source {name}: {e}")
+            return 0
+    
+    def store_subsource(self, source_id: int, name: str, url_pattern: str) -> int:
+        """
+        Store a subsource in the database.
+        
+        Args:
+            source_id: Parent source ID
+            name: Name of the subsource
+            url_pattern: URL pattern for the subsource
+            
+        Returns:
+            int: Subsource ID if successful, 0 otherwise
+        """
+        try:
+            # Check if subsource exists
+            result = self.supabase.table("govt_subsources").select("id").eq("source_id", source_id).eq("name", name).execute()
+            
+            if result.data and len(result.data) > 0:
+                # Subsource exists, return ID
+                subsource_id = result.data[0]["id"]
+                logger.info(f"Subsource {name} already exists with ID {subsource_id}")
+                return subsource_id
+            
+            # Insert new subsource
+            now = datetime.now().isoformat()
+            result = self.supabase.table("govt_subsources").insert({
+                "source_id": source_id,
+                "name": name,
+                "url_pattern": url_pattern,
+                "created_at": now,
+                "updated_at": now
+            }).execute()
+            
+            if result.data and len(result.data) > 0:
+                subsource_id = result.data[0]["id"]
+                logger.info(f"Subsource {name} stored with ID {subsource_id}")
+                return subsource_id
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error storing subsource {name}: {e}")
+            return 0
+    
+    def get_document_by_url(self, url: str) -> Optional[Document]:
+        """
+        Get a document by URL.
+        
+        Args:
+            url: URL of the document
+            
+        Returns:
+            Document object if found, None otherwise
+        """
+        try:
+            result = self.supabase.table("govt_documents").select("*").eq("url", url).execute()
+            
+            if result.data and len(result.data) > 0:
+                return Document.from_dict(result.data[0])
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting document by URL {url}: {e}")
+            return None
+    
+    
+    def get_documents_by_ids(self, doc_ids):
+        """
+        Get multiple documents by their IDs.
+        
+        Args:
+            doc_ids: List of document IDs to retrieve
+            
+        Returns:
+            List of document dictionaries
+        """
+        try:
+            if not doc_ids:
+                return []
+            
+            # Convert any non-string IDs to strings
+            str_ids = [str(doc_id) for doc_id in doc_ids]
+            
+            # Query Supabase for documents with these IDs
+            result = self.supabase.table("govt_documents").select(
+                "id", "title", "url", "summary", "source_name", "subsource_name", "content_hash"
+            ).in_("id", str_ids).execute()
+            
+            if result.data:
+                logger.info(f"Retrieved {len(result.data)} documents from Supabase by IDs")
+                return result.data
+            else:
+                logger.warning(f"No documents found in Supabase for the provided IDs")
+                return []
+                
+        except Exception as e:
+            logger.error(f"Error getting documents by IDs: {e}")
+            return []
+    
+    def store_document(self, document: Document) -> int:
+        """
+        Store a document in Supabase.
         
         Args:
             document: Document to store
@@ -964,194 +1273,184 @@ class StorageManager:
             int: Document ID if successful, 0 otherwise
         """
         try:
-            # Ensure we have a valid document
-            if document is None:
-                logger.error("Cannot store None document")
-                return 0
+            # Convert document to dictionary
+            doc_dict = document.to_dict()
+            
+            # Remove ID from dict for insert, we'll use it for check and update
+            doc_id = doc_dict.pop("id", None)
+            
+            # Handle datetime objects for JSON serialization
+            for key, value in doc_dict.items():
+                if isinstance(value, datetime):
+                    doc_dict[key] = value.isoformat()
+            
+            # Add updated_at timestamp
+            doc_dict["updated_at"] = datetime.now().isoformat()
+            
+            if doc_id:
+                # Document exists, update it
+                result = self.supabase.table("govt_documents").update(doc_dict).eq("id", doc_id).execute()
                 
-            # Log document details
-            logger.debug(f"Attempting to store document: {document.url}")
-            logger.debug(f"Document title: {document.title}")
-            logger.debug(f"Document status: {document.status}")
-            logger.debug(f"Document has content: {document.content is not None}")
-            logger.debug(f"Document content length: {len(document.content) if document.content else 0}")
-                
-            # Check database connection
-            if not self.conn or self.conn.closed:
-                logger.info("Database connection not established or closed, attempting to connect...")
-                if not self.connect():
-                    logger.error("Failed to connect to database in store_document")
+                if result.data and len(result.data) > 0:
+                    logger.info(f"Updated document with ID {doc_id}")
+                    return doc_id
+                else:
+                    logger.error(f"Failed to update document with ID {doc_id}")
                     return 0
-            
-            # Check for duplicate content if hash is available
-            if document.content_hash and document.content and self._has_column('govt_documents', 'content_hash'):
-                check_duplicate_sql = "SELECT id, url FROM govt_documents WHERE content_hash = %s AND url != %s"
-                logger.debug(f"Executing SQL: {check_duplicate_sql} with params: [{document.content_hash}, {document.url}]")
-                self.cursor.execute(check_duplicate_sql, (document.content_hash, document.url))
-                duplicate = self.cursor.fetchone()
-                if duplicate:
-                    logger.info(f"Content duplicate found: {document.url} has same content as {duplicate['url']}")
-            
-            # Check if document with this URL already exists
-            check_exists_sql = "SELECT id FROM govt_documents WHERE url = %s"
-            logger.debug(f"Executing SQL: {check_exists_sql} with param: [{document.url}]")
-            self.cursor.execute(check_exists_sql, (document.url,))
-            
-            result = self.cursor.fetchone()
-            
-            # Prepare values for database operations
-            values = {
-                "url": document.url,
-                "title": document.title,
-                "source_name": document.source_name,
-                "subsource_name": document.subsource_name,
-                "content": document.content,
-                "content_hash": document.content_hash,
-                "summary": document.summary,
-                "embedding_id": document.embedding_id,
-                "status": document.status,
-                "scrape_time": document.scrape_time,
-                "process_time": document.process_time,
-                "last_checked": document.last_checked
-            }
-            
-            # Log the values being stored
-            safe_values = {k: (v[:100] + '...' if isinstance(v, str) and len(v) > 100 else v) for k, v in values.items()}
-            logger.debug(f"Document values to store: {safe_values}")
-            
-            if result:
-                # Update existing document
-                doc_id = result['id']
-                logger.info(f"Updating existing document with ID: {doc_id}")
-                
-                # Build update SQL based on existing columns
-                update_parts = []
-                update_values = []
-                
-                for col, val in values.items():
-                    if col != 'url' and self._has_column('govt_documents', col):
-                        update_parts.append(f"{col} = %s")
-                        update_values.append(val)
-                
-                # Add updated_at timestamp
-                update_parts.append("updated_at = CURRENT_TIMESTAMP")
-                
-                # Add the document ID at the end
-                update_values.append(doc_id)
-                
-                # Execute update
-                update_sql = f"""
-                    UPDATE govt_documents 
-                    SET {', '.join(update_parts)}
-                    WHERE id = %s
-                """
-                
-                logger.debug(f"Executing SQL: {update_sql}")
-                logger.debug(f"SQL Parameters: {update_values}")
-                
-                self.cursor.execute(update_sql, update_values)
-                self.conn.commit()
-                document.doc_id = doc_id
-                logger.info(f"Successfully updated document with ID: {doc_id}")
-                
-                return doc_id
-            
             else:
-                # Insert new document
-                logger.info(f"Inserting new document: {document.url}")
+                # Check if document with this URL exists
+                existing = self.get_document_by_url(document.url)
                 
-                # Filter columns that exist in the table
-                insert_cols = []
-                insert_vals = []
-                placeholders = []
-                
-                for col, val in values.items():
-                    if self._has_column('govt_documents', col):
-                        insert_cols.append(col)
-                        insert_vals.append(val)
-                        placeholders.append("%s")
-                
-                # Execute insert
-                insert_sql = f"""
-                    INSERT INTO govt_documents 
-                    ({', '.join(insert_cols)})
-                    VALUES ({', '.join(placeholders)})
-                    RETURNING id
-                """
-                
-                logger.debug(f"Executing SQL: {insert_sql}")
-                logger.debug(f"SQL Parameters: {[val[:100] + '...' if isinstance(val, str) and len(val) > 100 else val for val in insert_vals]}")
-                
-                self.cursor.execute(insert_sql, insert_vals)
-                result = self.cursor.fetchone()
-                
-                if not result:
-                    logger.error("Insert succeeded but no ID was returned")
-                    self.conn.rollback()
-                    return 0
+                if existing:
+                    # Document exists, update with existing ID
+                    doc_dict["updated_at"] = datetime.now().isoformat()
+                    result = self.supabase.table("govt_documents").update(doc_dict).eq("id", existing.doc_id).execute()
                     
-                doc_id = result['id']
-                self.conn.commit()
-                document.doc_id = doc_id
-                logger.info(f"Successfully inserted document with ID: {doc_id}")
-                
-                return doc_id
-        
+                    if result.data and len(result.data) > 0:
+                        document.doc_id = existing.doc_id
+                        logger.info(f"Updated existing document with ID {existing.doc_id}")
+                        return existing.doc_id
+                    else:
+                        logger.error(f"Failed to update existing document with URL {document.url}")
+                        return 0
+                else:
+                    # New document, insert it
+                    # Add created_at timestamp
+                    doc_dict["created_at"] = datetime.now().isoformat()
+                    
+                    result = self.supabase.table("govt_documents").insert(doc_dict).execute()
+                    
+                    if result.data and len(result.data) > 0:
+                        doc_id = result.data[0]["id"]
+                        document.doc_id = doc_id
+                        logger.info(f"Inserted new document with ID {doc_id}")
+                        return doc_id
+                    else:
+                        logger.error(f"Failed to insert document with URL {document.url}")
+                        return 0
+                        
         except Exception as e:
-            logger.error(f"Error storing document: {str(e)}", exc_info=True)
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            if self.conn:
-                self.conn.rollback()
+            logger.error(f"Error storing document {document.url}: {e}")
             return 0
     
-    def get_document_by_url(self, url: str) -> Optional[Any]:
-        """Get a document by URL."""
-        try:
-            if not self.conn or self.conn.closed:
-                if not self.connect():
-                    return None
-            
-            query = "SELECT * FROM govt_documents WHERE url = %s"
-            logger.debug(f"Executing SQL: {query} with param: [{url}]")
-            self.cursor.execute(query, (url,))
-            
-            result = self.cursor.fetchone()
-            
-            if result:
-                from core import Document
-                return Document.from_dict(result)
-            
-            return None
+    def get_unprocessed_documents(self, limit: int = 100) -> List[Document]:
+        """
+        Get documents that need processing.
         
-        except Exception as e:
-            logger.error(f"Error fetching document: {str(e)}", exc_info=True)
-            return None
-    
-    def get_unprocessed_documents(self, limit: int = 100) -> List[Any]:
-        """Get documents that need processing."""
+        Args:
+            limit: Maximum number of documents to return
+            
+        Returns:
+            List of Document objects
+        """
         try:
-            if not self.conn or self.conn.closed:
-                if not self.connect():
-                    return []
+            result = self.supabase.table("govt_documents").select("*").eq(
+                "status", "scraped"
+            ).order("scrape_time", {"ascending": True}).limit(limit).execute()
             
-            query = """
-                SELECT * FROM govt_documents
-                WHERE status = 'scraped'
-                ORDER BY scrape_time ASC
-                LIMIT %s
-            """
-            logger.debug(f"Executing SQL: {query} with param: [{limit}]")
-            self.cursor.execute(query, (limit,))
+            if result.data:
+                return [Document.from_dict(doc) for doc in result.data]
             
-            results = self.cursor.fetchall()
-            
-            from core import Document
-            return [Document.from_dict(row) for row in results]
-        
-        except Exception as e:
-            logger.error(f"Error fetching unprocessed documents: {str(e)}", exc_info=True)
             return []
+            
+        except Exception as e:
+            logger.error(f"Error getting unprocessed documents: {e}")
+            return []
+    
+    def search_full_text(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Perform full-text search on document content using Supabase's PostgreSQL.
         
+        Args:
+            query: Search query
+            limit: Maximum number of results
+            
+        Returns:
+            List of matching documents with search metadata
+        """
+        try:
+            # Try to use stored procedure if it exists
+            try:
+                # Call the stored procedure (must be created in SQL editor first)
+                result = self.supabase.rpc(
+                    "search_documents", 
+                    {"search_query": query, "max_results": limit}
+                ).execute()
+                
+                if result.data:
+                    return result.data
+            except Exception as e:
+                logger.warning(f"Could not use search_documents function: {e}")
+                logger.info("Falling back to basic search")
+                
+                # Fall back to basic search using filter
+                # Note: This is less powerful than the full-text search function
+                result = self.supabase.table("govt_documents").select(
+                    "id", "url", "title", "source_name", "subsource_name", "summary"
+                ).ilike("content", f"%{query}%").limit(limit).execute()
+                
+                if result.data:
+                    # Add placeholder rank and highlight
+                    for item in result.data:
+                        item["rank"] = 1.0
+                        item["highlight"] = "..."  # No highlight in basic search
+                    
+                    return result.data
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error performing full-text search: {e}")
+            return []
+    
+    def upload_file_to_storage(self, file_path: str, bucket: str = 'documents', 
+                            remote_path: str = None) -> Optional[str]:
+        """
+        Upload a file to Supabase Storage.
+        
+        Args:
+            file_path: Local path to file
+            bucket: Storage bucket name
+            remote_path: Path/filename in storage
+            
+        Returns:
+            str: Public URL of uploaded file if successful, None otherwise
+        """
+        try:
+            # Check if bucket exists, create if not
+            buckets = self.supabase.storage.list_buckets()
+            bucket_exists = any(b['name'] == bucket for b in buckets)
+            
+            if not bucket_exists:
+                logger.info(f"Creating bucket: {bucket}")
+                self.supabase.storage.create_bucket(bucket)
+            
+            # Determine remote path if not provided
+            if not remote_path:
+                file_name = os.path.basename(file_path)
+                remote_path = file_name
+            
+            # Read file content
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Upload file
+            result = self.supabase.storage.from_(bucket).upload(
+                remote_path, 
+                file_content,
+                file_options={"contentType": "application/octet-stream"}
+            )
+            
+            # Get public URL
+            public_url = self.supabase.storage.from_(bucket).get_public_url(remote_path)
+            
+            logger.info(f"Successfully uploaded file to {public_url}")
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Error uploading file to Supabase Storage: {e}")
+            return None
+
 
 class ScrapeConfig:
     """

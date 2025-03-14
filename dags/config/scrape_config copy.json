@@ -1,0 +1,618 @@
+{
+  "sources": [
+    {
+      "name": "Federal Reserve",
+      "url": "https://www.federalreserve.gov",
+      "pages": [
+        {
+          "name": "Recent Developments",
+          "url_pattern": "/",
+          "max_pages": 1,
+          "max_documents": 5,
+          "use_javascript": true,
+          "extraction": {
+            "type": "css",
+            "document_links": ".col-xs-12.col-sm-8 ul.list-unstyled li p a",
+            "content": "#content",
+            "pagination": ".pagination a.next"
+          }
+        }
+      ]
+    }
+    // {
+    //   "name": "Bureau of Economic Analysis",
+    //   "url": "https://www.bea.gov",
+    //   "pages": [
+    //     {
+    //       "name": "Current Releases",
+    //       "url_pattern": "/news/current-releases",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": ".table.table-hover.table-striped tr.release-row td:first-child a",
+    //         "content": ".main-container",
+    //         "pagination": ".pager__item--next a"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Bureau of Labor Statistics",
+    //   "url": "https://www.bls.gov",
+    //   "pages": [
+    //     {
+    //       "name": "Latest News Releases",
+    //       "url_pattern": "/bls/newsrels.htm",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,  
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "#latest-releases + ul li a",
+    //         "content": "#main-content-full-width"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "International Monetary Fund",
+    //   "url": "https://www.imf.org",
+    //   "pages": [
+    //     {
+    //       "name": "Latest News",
+    //       "url_pattern": "/en/News",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": ".link-list.link-list--news ul li a",
+    //         "content": ".container-fluid",
+    //         "pagination": ".btn[href*='SearchNews']"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "World Bank",
+    //   "url": "https://www.worldbank.org",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "/en/news/all?lang_exact=English&displayconttype_exact=Press%20Release",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": ".search-listing h4 a",
+    //         "content": ".container-fluid",
+    //         "pagination": ".f05v6-pagination .next a"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "World Trade Organization",
+    //   "url": "https://www.wto.org",
+    //   "pages": [
+    //     {
+    //       "name": "All News",
+    //       "url_pattern": "/english/news_e/news_e.htm",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "xpath",
+    //         "document_links": "//a[contains(@href, '/english/news_e/')]",
+    //         "content": "//div[@class='container']",
+    //         "pagination": null
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "European Central Bank",
+    //   "url": "https://www.ecb.europa.eu",
+    //   "pages": [
+    //     {
+    //       "name": "Publications",
+    //       "url_pattern": "/press/pubbydate/html/index.en.html",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.title a",
+    //         "content": ".container",
+    //         "pagination": null
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Bank of England",
+    //   "url": "https://www.bankofengland.co.uk",
+    //   "pages": [
+    //     {
+    //       "name": "News and Publications",
+    //       "url_pattern": "/news/",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.col3 > a.release",
+    //         "content": "main.main",
+    //         "pagination": ".list-pagination__link--next"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Bank of Japan",
+    //   "url": "https://www.boj.or.jp",
+    //   "pages": [
+    //     {
+    //       "name": "News and Updates",
+    //       "url_pattern": "/en/",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.news_list-ul li.news_list-li a.news_list-link",
+    //         "content": ".wrapper-in",
+    //         "pagination": null
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Congressional Budget Office",
+    //   "url": "https://www.cbo.gov/blog",
+    //   "pages": [
+    //     {
+    //       "name": "CBO Blog Posts",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.views-field-title h3.field-content a",
+    //         "content": "div.views-field-body p.field-content",
+    //         "pagination": {
+    //           "selector": "li.pager__item a",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "U.S. Department of the Treasury",
+    //   "url": "https://home.treasury.gov/news/press-releases",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "h3.featured-stories__headline a",
+    //         "content": "div.content--2col__body",
+    //         "pagination": {
+    //           "selector": "li.pager__item a",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "U.S. Securities and Exchange Commission",
+    //   "url": "https://www.sec.gov/newsroom/press-releases",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "td.views-field-field-display-title a",
+    //         "content": "div.view-content",
+    //         "pagination": {
+    //           "selector": "li.pager__item a",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "U.S. Census Bureau",
+    //   "url": "https://www.census.gov/topics/business-economy/newsroom/news.html",
+    //   "pages": [
+    //     {
+    //       "name": "Business Economy News",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "a.uscb-list-text__item-container.cmp-list__item-link",
+    //         "content": "div.cmp-list__item-description.uscb-body-small-01",
+    //         "pagination": {
+    //           "selector": "li.pager__item a",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "People's Bank of China",
+    //   "url": "http://www.pbc.gov.cn/en/3688006/index.html",
+    //   "pages": [
+    //     {
+    //       "name": "Recent Developments",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.recentList li a[href]:not(#custom_status_content)",
+    //         "content": "ul.recentList",
+    //         "pagination": {
+    //           "selector": "a#custom_status_content",
+    //           "type": "dynamic_load"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "White House",
+    //   "url": "https://www.whitehouse.gov/articles/",
+    //   "pages": [
+    //     {
+    //       "name": "White House Articles",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "h2.wp-block-post-title a",
+    //         "content": "div.wp-block-whitehouse-post-template__content",
+    //         "pagination": {
+    //           "selector": "nav.wp-block-query-pagination a.page-numbers[href*='page/']",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "U.S. International Trade Commission",
+    //   "url": "https://www.usitc.gov/news_releases",
+    //   "pages": [
+    //     {
+    //       "name": "News Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.news-release-row div.news-release-title a",
+    //         "content": "div.news-release-row",
+    //         "pagination": {
+    //           "selector": "ul.page li a[href*='index_']",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "U.S. International Trade Commission",
+    //   "url": "https://www.usitc.gov/news_releases",
+    //   "pages": [
+    //     {
+    //       "name": "News Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.news-release-row div.news-release-title a",
+    //         "content": "div.news-release-row",
+    //         "pagination": {
+    //           "selector": "ul.page li a[href*='index_']",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Internal Revenue Service",
+    //   "url": "https://www.irs.gov/newsroom",
+    //   "pages": [
+    //     {
+    //       "name": "News Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.field--name-body a[href*='/newsroom/']",
+    //         "content": "div.field--name-body p",
+    //         "pagination": {
+    //           "selector": "ul.pager li.pager__item a",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Economic Policy Institute",
+    //   "url": "https://www.epi.org/publications/",
+    //   "pages": [
+    //     {
+    //       "name": "Publications",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.post-list li h4 a",
+    //         "content": "div.loop-meta",
+    //         "pagination": {
+    //           "selector": "div.pagination a.page-numbers",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Peterson Institute for International Economics",
+    //   "url": "https://www.piie.com/search?search_api_fulltext=&sort_by=field_date&f%5B0%5D=content_type%3Ablog",
+    //   "pages": [
+    //     {
+    //       "name": "Blog Search Results",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "article.image-teaser h2.image-teaser__title a",
+    //         "content": "div.image-teaser__body",
+    //         "pagination": {
+    //           "selector": "nav.pager ul.pager__items li.pager__item a.pager__link",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "USTR Press Office",
+    //   "url": "https://www.ustr.gov/about-us/policy-offices/press-office/press-releases",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.views-row div.views-field-title span.field-content a",
+    //         "content": "div.content",
+    //         "pagination": {
+    //           "selector": "ul.pager li.pager__item a.pager__link",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "US Department of Commerce News",
+    //   "url": "https://www.commerce.gov/news",
+    //   "pages": [
+    //     {
+    //       "name": "News Articles",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.view-content article h2 a",
+    //         "content": "div.field.field--name-body",
+    //         "pagination": {
+    //           "selector": "ul.pager li.pager__item a.pager__link",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Federal Trade Commission News",
+    //   "url": "https://www.ftc.gov/news-events/news/press-releases",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.views-row div.views-field-rendered-entity article h3.node-title a",
+    //         "content": "div.node__content div.field--name-body .field__item",
+    //         "pagination": {
+    //           "selector": "ul.pager li.pager__item a.pager__link",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Federal Trade Commission News",
+    //   "url": "https://www.ftc.gov/news-events/news/press-releases",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "div.views-row div.views-field-rendered-entity article h3.node-title a",
+    //         "content": "div.node__content div.field--name-body .field__item",
+    //         "pagination": {
+    //           "selector": "ul.pager li.pager__item a.pager__link",
+    //           "attribute": "href"
+    //         }
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Department of Energy Search Results",
+    //   "url": "https://www.energy.gov/search?page=0&sort_by=date&f%5B0%5D=article_type%3A1&f%5B1%5D=article_type%3A7&f%5B2%5D=article_type%3A1378506&f%5B3%5D=content_type_rest%3Aarticle&f%5B4%5D=language%3Aen",
+    //   "pages": [
+    //     {
+    //       "name": "Search Articles",
+    //       "url_pattern": "/search?page={page}&sort_by=date&f%5B0%5D=article_type%3A1&f%5B1%5D=content_type_rest%3Aarticle",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root p.MuiTypography-root.css-gyoetp a",
+    //         "content": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root p.MuiTypography-root.css-twdac2 span",
+    //         "date": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root p.MuiTypography-root.css-zachnz span",
+    //         "source": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root div.MuiChip-label"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Department of Energy Search Results",
+    //   "url": "https://www.energy.gov/search?page=0&sort_by=date&f%5B0%5D=article_type%3A1&f%5B1%5D=article_type%3A7&f%5B2%5D=article_type%3A1378506&f%5B3%5D=content_type_rest%3Aarticle&f%5B4%5D=language%3Aen",
+    //   "pages": [
+    //     {
+    //       "name": "Search Articles",
+    //       "url_pattern": "/search?page={page}&sort_by=date&f%5B0%5D=article_type%3A1&f%5B1%5D=content_type_rest%3Aarticle",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root p.MuiTypography-root.css-gyoetp a",
+    //         "content": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root p.MuiTypography-root.css-twdac2 span",
+    //         "date": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root p.MuiTypography-root.css-zachnz span",
+    //         "source": "ul.MuiList-root li.MuiListItem-root div.MuiListItemText-root div.MuiChip-label"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "US Department of State Press Releases",
+    //   "url": "https://www.state.gov/",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "/press-releases",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.collection-results li.collection-result a.collection-result__link",
+    //         "type": "li.collection-result p.collection-result__date",
+    //         "date": "li.collection-result div.collection-result-meta span[dir='ltr']",
+    //         "author": "li.collection-result div.collection-result-meta span:not([dir='ltr'])"
+    //       },
+    //       "pagination": {
+    //         "selector": "div.pagination a.page-numbers",
+    //         "attribute": "href"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "US Department of State Press Releases",
+    //   "url": "https://www.state.gov/",
+    //   "pages": [
+    //     {
+    //       "name": "Press Releases",
+    //       "url_pattern": "/press-releases",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ul.collection-results li.collection-result a.collection-result__link",
+    //         "type": "li.collection-result p.collection-result__date",
+    //         "date": "li.collection-result div.collection-result-meta span[dir='ltr']",
+    //         "author": "li.collection-result div.collection-result-meta span:not([dir='ltr'])"
+    //       },
+    //       "pagination": {
+    //         "selector": "div.pagination a.page-numbers",
+    //         "attribute": "href"
+    //       }
+    //     }
+    //   ]
+    // },
+    // {
+    //   "name": "Brookings Institution Research and Commentary",
+    //   "url": "https://www.brookings.edu/research-commentary/",
+    //   "pages": [
+    //     {
+    //       "name": "Research Articles",
+    //       "url_pattern": "",
+    //       "max_pages": 1,
+    //       "max_documents": 5,
+    //       "use_javascript": true,
+    //       "extraction": {
+    //         "type": "css",
+    //         "document_links": "ol.ais-InfiniteHits-list li.ais-InfiniteHits-item article a.overlay-link",
+    //         "title": "ol.ais-InfiniteHits-list li.ais-InfiniteHits-item article span.article-title",
+    //         "type": "ol.ais-InfiniteHits-list li.ais-InfiniteHits-item article span.article-type",
+    //         "author": "ol.ais-InfiniteHits-list li.ais-InfiniteHits-item article p.byline",
+    //         "date": "ol.ais-InfiniteHits-list li.ais-InfiniteHits-item article p.date",
+    //         "content": "ol.ais-InfiniteHits-list li.ais-InfiniteHits-item article p.hit-text span.ais-Snippet-nonHighlighted"
+    //       },
+    //       "pagination": {
+    //         "selector": "button.ais-InfiniteHits-loadMore",
+    //         "attribute": "data-href"
+    //       }
+    //     }
+    //   ]
+    // }   
+  ]
+}

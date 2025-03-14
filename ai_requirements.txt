@@ -1,0 +1,14 @@
+# AI and Vector Database dependencies
+pinecone>=5.1.0  # Updated to new package name
+python-dotenv>=1.0.0  # For loading environment variables from .env
+langchain>=0.0.267
+langchain-anthropic>=0.1.1
+langchain-openai>=0.0.2
+anthropic>=0.5.0
+openai>=1.1.0
+beautifulsoup4>=4.12.2
+psycopg2-binary>=2.9.6
+
+# Optional - uncomment if needed
+# tiktoken>=0.4.0
+# sentence-transformers>=2.2.2

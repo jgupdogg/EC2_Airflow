@@ -1,6 +1,6 @@
 version: '3'
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.10.5
+  image: custom-airflow:latest
   environment: &airflow-common-env
     AIRFLOW_HOME: /opt/airflow  # Inside container path
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -41,7 +41,7 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
-    command: bash -c "pip install -r /opt/airflow/requirements.txt && airflow webserver"
+    command: bash -c " pip install -r /opt/airflow/requirements.txt && airflow webserver"
     ports:
       - 8080:8080
     healthcheck:

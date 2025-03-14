@@ -6,5 +6,7 @@ export AIRFLOW_HOME="/home/jgupdogg/dev/aws/MWAA/airflow"
 # Ensure the directory exists
 mkdir -p $AIRFLOW_HOME
 
+docker build -t custom-airflow:latest .
+
 # Start docker-compose
 docker-compose up
